@@ -386,8 +386,7 @@ function tickPlayer(p,map,dt,bullets){
     return;
   }
 
-  const frozen=SRP.type==='freeze'&&SRP.triggered&&SRP.effectTimer<3.5;
-  const spd=frozen?60:195;
+  const spd=195;
   p.vx=0;
   const goLeft =K.ArrowLeft ||K.KeyA;
   const goRight=K.ArrowRight||K.KeyD;
@@ -462,7 +461,7 @@ function drawPlayer(p,camX){
 // ── Surprise system (rotates each death) ──────────────────────────────────────
 let controlsInverted=false;
 const SRP={
-  types:['dark','spike_wave','ambush','block_barrage','ghost_floor','freeze'],
+  types:['dark','spike_wave','ambush','block_barrage','ghost_floor'],
   lastType:null, type:null,
   triggerAt:0, timer:0, triggered:false, effectTimer:0,
   darkAlpha:0, msg:'', msgTimer:0,
@@ -528,9 +527,6 @@ function activateSurprise(){
     case 'ghost_floor':
       // Tiles silently become hollow — no warning
       SRP.msg=''; break;
-    case 'freeze':
-      // Player speed halved for 3s
-      SRP.msg='FROZEN!'; SRP.msgTimer=0.6; break;
   }
 }
 
@@ -551,8 +547,6 @@ function tickSurprise(dt){
       break;
     case 'invert':
       if(SRP.effectTimer>3.5) controlsInverted=false; break;
-    case 'freeze':
-      break; // handled in tickPlayer
   }
 }
 
@@ -581,10 +575,6 @@ function drawSurpriseOverlay(){
     ctx.font='bold 13px Arial';
     ctx.textAlign='center'; ctx.textBaseline='top';
     ctx.fillText('⟵  CONTROLS FLIPPED  ⟶',CW/2,HH+6);
-  }
-  if(SRP.type==='freeze'&&SRP.triggered&&SRP.effectTimer<3.5){
-    ctx.fillStyle='rgba(100,180,255,0.12)';
-    ctx.fillRect(0,HH,CW,PH);
   }
 }
 
