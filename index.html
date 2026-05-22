@@ -659,13 +659,12 @@ function tickTraps(dt,player,map,landing){
 
   // ── Pop-up spikes (no warning) ────────────────────────────────────
   const descending=!player.onGround&&player.vy>60;
-  if(graceTimer<=0&&descending&&!prevDescending&&landing){
-    // Spawn spike exactly at landing spot, rising from surface
+  if(graceTimer<=0&&descending&&!prevDescending&&landing&&Math.random()<0.35){
+    // Spawn spike exactly at landing spot, rising from surface (35% chance)
     TRAPS.popSpikes.push({
       x:landing.x-TS/2, y:landing.y-TS,
       rise:0, life:2.0, alive:true
     });
-    // no sound — pure surprise
   }
   prevDescending=descending;
   for(let i=TRAPS.popSpikes.length-1;i>=0;i--){
@@ -684,7 +683,7 @@ function tickTraps(dt,player,map,landing){
     if(!s.alive) return;
     const tx=landing?landing.x:px;
     const dx=tx-s.x;
-    const spd=Math.min(190, 70+deathCount*6);
+    const spd=Math.min(140, 55+deathCount*4);
     s.vx=dx>0?spd:-spd;
     // edge guard
     const fdir=s.vx>0;
@@ -1247,7 +1246,7 @@ function loop(ts){
         gemsGot++;
         emit(gx,gy,'#FFD700',12,100);
         sndGem();
-        if(gemsGot>=totalGems&&!doorOpen){
+        if(gemsGot>=Math.ceil(totalGems*0.8)&&!doorOpen){
           doorOpen=true;
           map[doorRow][doorCol]=T.DOOR_OPEN;
           sndOpen();
