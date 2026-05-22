@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dave's Escape</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
+canvas { display:block; image-rendering:pixelated; border:1px solid #1a1a2e; }
+#info { color:#444; font:11px Arial; margin-top:6px; letter-spacing:1px; }
+</style>
+</head>
+<body>
+<canvas id="g"></canvas>
+<div id="info">ARROWS = move &nbsp;|&nbsp; SPACE / ↑ = jump &nbsp;|&nbsp; Z = shoot</div>
+<script>
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const CW=800, CH=500, HH=52, TS=32;
+const PH=CH-HH;           // 448px play area
+const MW=56, MH=14;       // map tiles (56 wide × 14 tall)
+const PW=22, PHGT=28;     // player size
+
+const T={EMPTY:0,SOLID:1,GEM:2,DOOR:3,DOOR_OPEN:4,SPIKE:5};
+const GS={PLAYING:0,DYING:1,DEAD:2,WIN:3};
+
+// ── Canvas ─────────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('g');
+canvas.width=CW; canvas.height=CH;
+const ctx=canvas.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+
+// ── Input ──────────────────────────────────────────────────────────────────────
+const K={};
+const JP={};   // justPressed
+let prevK={};
+addEventListener('keydown',e=>{
+  K[e.code]=true;
+  ['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)&&e.preventDefault();
+});
+addEventListener('keyup',e=>{ K[e.code]=false; });
+function tickInput(){
+  for(const k in K) JP[k]=K[k]&&!prevK[k];
+  prevK={...K};
+}
+
+// ── Seeded RNG ─────────────────────────────────────────────────────────────────
+let RS=1;
+function srand(s){ RS=s|0; }
+function sr(){ RS=(RS*1664525+1013904223)|0; return (RS>>>0)/4294967296; }
+function sri(a,b){ return Math.floor(sr()*(b-a+1))+a; }
+
+// ── Audio ──────────────────────────────────────────────────────────────────────
+let AC=null;
+function getAC(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function tone(f,d,type='square',vol=0.08,delay=0){
+  try{
+    const a=getAC(),o=a.createOscillator(),g=a.createGain();
+    o.connect(g); g.connect(a.destination);
+    o.type=type; o.frequency.value=f;
+    g.gain.setValueAtTime(vol,a.currentTime+delay);
+    g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+delay+d);
+    o.start(a.currentTime+delay); o.stop(a.currentTime+delay+d);
+  }catch(e){}
+}
+const sndJump  =()=>{ tone(200,0.07); tone(340,0.09,'square',0.07,0.05); };
+const sndGem   =()=>{ tone(900,0.05,'sine',0.12); tone(1200,0.08,'sine',0.10,0.05); };
+const sndShoot =()=>tone(520,0.05,'square',0.07);
+const sndHit   =()=>{ [180,130,90].forEach((f,i)=>tone(f,0.15,'sawtooth',0.10,i*0.07)); };
+const sndOpen  =()=>{ [440,554,659,880,1108].forEach((f,i)=>tone(f,0.12,'sine',0.10,i*0.07)); };
+const sndWin   =()=>{ [523,659,784,1047].forEach((f,i)=>tone(f,0.18,'sine',0.12,i*0.11)); };
+
+// ── Particles ──────────────────────────────────────────────────────────────────
+const PARTS=[];
+function emit(wx,wy,color,n=8,spd=90){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, s=spd*(0.4+Math.random()*0.8);
+    PARTS.push({x:wx,y:wy,vx:Math.cos(a)*s,vy:Math.sin(a)*s-50,
+                life:1,color,sz:2+Math.random()*4});
+  }
+}
+function tickParts(dt){
+  for(let i=PARTS.length-1;i>=0;i--){
+    const p=PARTS[i];
+    p.vy+=500*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt*2;
+    if(p.life<=0) PARTS.splice(i,1);
+  }
+}
+function drawParts(cx){
+  PARTS.forEach(p=>{
+    ctx.globalAlpha=Math.max(0,p.life*0.9);
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x-cx, HH+p.y-p.sz/2, p.sz, p.sz);
+  });
+  ctx.globalAlpha=1;
+}
+
+// ── Mocking messages ───────────────────────────────────────────────────────────
+const INSULTS=[
+  'The original Dave did this in 1990. Without a tutorial.',
+  'The weakest enemy in the game just killed you. Impressive.',
+  'Our hero fell into... a spike. A basic spike.',
+  'Attempt #{N} — the game is no longer surprised.',
+  'You collected {G} out of {T} gems. Almost. Not.',
+  "It's not hard. You're just...",
+  'We saw an eight-year-old do this. No hands.',
+  'The monster touched you once. And you died. Makes sense.',
+  'The level is randomly generated. Even it laughs at you.',
+  'The door was open. You did not arrive.',
+  'The gem ran from you. It will not get better.',
+  'You tried to jump. Nice. It did not help.',
+  'How many seconds was that run? We counted. Embarrassing.',
+  'A spike. You chose to walk toward the spike.',
+  'Level {L}. Still here. Why.',
+  'The enemies knew exactly where you would land. You still went there.',
+  'Same spot. Again. They are waiting for you there.',
+];
+const MILESTONES={
+  10:'Ten deaths. The game is starting to worry about you.',
+  25:'Twenty-five. We are calling for help.',
+  50:'Fifty deaths. Are you okay?',
+};
+function pickInsult(deaths,g,t,lv){
+  if(MILESTONES[deaths]) return MILESTONES[deaths];
+  const msg=INSULTS[Math.floor(Math.random()*INSULTS.length)];
+  return msg.replace('{N}',deaths).replace('{G}',g).replace('{T}',t).replace('{L}',lv);
+}
+
+// ── Tile helpers ───────────────────────────────────────────────────────────────
+function gT(map,c,r){
+  if(c<0||c>=MW||r<0||r>=MH) return T.SOLID;
+  return map[r][c];
+}
+function solid(map,c,r){
+  if(isGhost(c,r)) return false; // looks solid, isn't
+  const t=gT(map,c,r);
+  return t===T.SOLID||t===T.DOOR||t===T.DOOR_OPEN;
+}
+function spike(map,c,r){ return gT(map,c,r)===T.SPIKE; }
+
+// ── Level generation ───────────────────────────────────────────────────────────
+function genLevel(deathCount,levelNum){
+  srand(Date.now()&0xFFFFFF ^ deathCount*137 ^ levelNum*999);
+  const map=Array.from({length:MH},()=>new Uint8Array(MW));
+
+  // Ceiling + double floor
+  for(let c=0;c<MW;c++){
+    map[0][c]=T.SOLID;
+    map[MH-1][c]=T.SOLID;
+    map[MH-2][c]=T.SOLID;
+  }
+  // Side walls
+  for(let r=0;r<MH;r++){ map[r][0]=T.SOLID; map[r][MW-1]=T.SOLID; }
+
+  // Starting platform (left side, ground level)
+  for(let c=1;c<7;c++) map[MH-3][c]=T.SOLID;
+  const platforms=[{col:1,row:MH-3,w:6}];
+
+  // Generate platforms left → right
+  let col=8, row=MH-3;
+  while(col<MW-10){
+    const gap=sri(2,4);
+    const pw =sri(3,7);
+    const dr =sri(-2,2);
+    row=Math.max(2,Math.min(MH-3,row+dr));
+    const sc=col+gap;
+    const ec=Math.min(MW-4,sc+pw);
+    const aw=ec-sc;
+    if(aw>=2){
+      for(let c=sc;c<sc+aw;c++) map[row][c]=T.SOLID;
+      platforms.push({col:sc,row,w:aw});
+      col=sc+aw;
+    } else col+=gap+2;
+  }
+
+  // ── Gems on platforms ──────────────────────────────────────────────
+  const gems=[];
+  platforms.forEach(p=>{
+    for(let c=p.col;c<p.col+p.w;c++){
+      if(sr()<0.42 && map[p.row-1][c]===T.EMPTY){
+        map[p.row-1][c]=T.GEM;
+        gems.push({col:c,row:p.row-1,
+          px:c*TS+TS/2, py:(p.row-1)*TS,
+          collected:false, sliding:false, slideDir:1, slideSpd:28});
+      }
+    }
+  });
+  // Floor gems (sparse)
+  for(let c=4;c<MW-6;c++){
+    if(sr()<0.07 && map[MH-3][c]===T.EMPTY){
+      map[MH-3][c]=T.GEM;
+      gems.push({col:c,row:MH-3,
+        px:c*TS+TS/2, py:(MH-3)*TS,
+        collected:false, sliding:false, slideDir:1, slideSpd:28});
+    }
+  }
+  // Guarantee at least 5 gems
+  while(gems.length<5){
+    const p=platforms[sri(0,platforms.length-1)];
+    const c=p.col+sri(0,p.w-1);
+    if(map[p.row-1][c]===T.EMPTY){
+      map[p.row-1][c]=T.GEM;
+      gems.push({col:c,row:p.row-1,
+        px:c*TS+TS/2,py:(p.row-1)*TS,
+        collected:false,sliding:false,slideDir:1,slideSpd:28});
+    }
+  }
+
+  // ── Door ──────────────────────────────────────────────────────────
+  const dc=MW-5, dr=MH-3;
+  map[MH-2][dc]=T.SOLID; map[MH-2][dc+1]=T.SOLID; // ensure floor
+  map[dr][dc]=T.DOOR;
+
+  // ── Spikes ────────────────────────────────────────────────────────
+  const spikeChance=0.03+Math.min(0.09,deathCount*0.004);
+  for(let c=12;c<MW-8;c++){   // start from col 12 — keep left side safe
+    if(sr()<spikeChance && map[MH-3][c]===T.EMPTY && map[MH-2][c]===T.SOLID)
+      map[MH-3][c]=T.SPIKE;
+  }
+
+  // ── Enemies ───────────────────────────────────────────────────────
+  const enemies=[];
+  const numE=Math.min(2+Math.floor(deathCount/3)+levelNum-1, 9);
+  for(let i=0;i<numE;i++){
+    const p=platforms[sri(1,Math.max(1,platforms.length-2))];
+    if(!p) continue;
+    const ec=p.col+sri(0,Math.max(0,p.w-2));
+    const er=p.row-1;
+    if(map[er][ec]===T.EMPTY && map[er+1]&&map[er+1][ec]===T.SOLID){
+      const roll=sr();
+      let etype='walker';
+      if(roll<0.55) etype='interceptor';           // majority are interceptors
+      else if(deathCount>2 && roll<0.80) etype='chaser';
+      enemies.push({
+        x:ec*TS, y:er*TS,
+        vx:(sr()<0.5?1:-1)*55, vy:0,
+        type:etype,
+        alive:true, flash:0,
+        targetX:null, warnTimer:0
+      });
+    }
+  }
+
+  return {map, gems, totalGems:gems.length, enemies, doorCol:dc, doorRow:dr};
+}
+
+// ── Tile rendering ─────────────────────────────────────────────────────────────
+const crackSeeds={}; // stable crack positions per tile
+function getCracks(key,n){
+  if(!crackSeeds[key]){
+    crackSeeds[key]=[];
+    for(let i=0;i<n;i++) crackSeeds[key].push({
+      x1:4+Math.random()*(TS-8), y1:2,
+      x2:4+Math.random()*(TS-8), y2:TS-2
+    });
+  }
+  return crackSeeds[key];
+}
+
+function drawTile(t,sx,sy,key){
+  switch(t){
+    case T.SOLID:
+      ctx.fillStyle='#3d2b1a';
+      ctx.fillRect(sx,sy,TS,TS);
+      ctx.fillStyle='#5c4230';
+      ctx.fillRect(sx,sy,TS,5);
+      ctx.fillStyle='rgba(0,0,0,0.25)';
+      ctx.fillRect(sx,sy+TS-3,TS,3);
+      // subtle dot pattern
+      ctx.fillStyle='rgba(0,0,0,0.12)';
+      for(let i=0;i<3;i++) ctx.fillRect(sx+6+i*10, sy+10, 2, 2);
+      break;
+
+    case T.GEM:{
+      const cx=sx+TS/2, cy=sy+TS/2;
+      const glow=0.7+0.3*Math.sin(Date.now()/400);
+      ctx.save();
+      ctx.shadowColor='#FFD700'; ctx.shadowBlur=8*glow;
+      ctx.fillStyle='#FFD700';
+      ctx.beginPath();
+      ctx.moveTo(cx,sy+5); ctx.lineTo(sx+TS-5,cy);
+      ctx.lineTo(cx,sy+TS-5); ctx.lineTo(sx+5,cy);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(cx,sy+5); ctx.lineTo(sx+TS-5,cy); ctx.lineTo(cx,cy-2);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case T.DOOR:
+    case T.DOOR_OPEN:{
+      const open=t===T.DOOR_OPEN;
+      ctx.fillStyle=open?'#004d1a':'#4d0000';
+      ctx.fillRect(sx+2,sy,TS-4,TS);
+      ctx.fillStyle=open?'#00882e':'#880000';
+      ctx.fillRect(sx+5,sy+3,TS-10,TS-8);
+      // arch
+      ctx.beginPath();
+      ctx.arc(sx+TS/2,sy+TS/2-2,(TS-12)/2,Math.PI,0);
+      ctx.fillStyle=open?'#00ff66':'#ff2222';
+      ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font='bold 8px Arial';
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillText(open?'EXIT':'LOCK',sx+TS/2,sy+TS-3);
+      break;
+    }
+    case T.SPIKE:
+      ctx.fillStyle='#991100';
+      for(let i=0;i<3;i++){
+        const bx=sx+4+i*9;
+        ctx.beginPath();
+        ctx.moveTo(bx,sy+TS); ctx.lineTo(bx+7,sy+TS); ctx.lineTo(bx+3,sy+TS-15);
+        ctx.closePath(); ctx.fill();
+      }
+      // glint
+      ctx.fillStyle='rgba(255,100,0,0.5)';
+      for(let i=0;i<3;i++) ctx.fillRect(sx+6+i*9,sy+TS-13,2,4);
+      break;
+  }
+}
+
+function renderMap(map,camX){
+  const sc=Math.floor(camX/TS);
+  const ec=Math.min(MW,sc+Math.ceil(CW/TS)+2);
+  for(let r=0;r<MH;r++){
+    for(let c=sc;c<ec;c++){
+      const t=map[r][c];
+      if(t===T.EMPTY) continue;
+      drawTile(t, c*TS-camX, HH+r*TS, `${r}_${c}`);
+    }
+  }
+}
+
+// ── Player ─────────────────────────────────────────────────────────────────────
+function mkPlayer(){
+  return {
+    x:2*TS, y:(MH-4)*TS, vx:0, vy:0,
+    onGround:false, facing:1,
+    dying:false, alive:true,
+    dyTimer:0, dyAngle:0, dyScale:1,
+    flash:0, bullets:8, shootCD:0, jumpHeld:false
+  };
+}
+
+function resolveX(p,map){
+  const t=p.y+3, b=p.y+PHGT-3;
+  // right
+  const rc=Math.floor((p.x+PW)/TS);
+  if(solid(map,rc,Math.floor(t/TS))||solid(map,rc,Math.floor(b/TS))){
+    p.x=rc*TS-PW; p.vx=0;
+  }
+  // left
+  const lc=Math.floor(p.x/TS);
+  if(solid(map,lc,Math.floor(t/TS))||solid(map,lc,Math.floor(b/TS))){
+    p.x=(lc+1)*TS; p.vx=0;
+  }
+}
+
+function resolveY(p,map){
+  const l=p.x+3, r=p.x+PW-3;
+  if(p.vy>=0){
+    const row=Math.floor((p.y+PHGT)/TS);
+    if(solid(map,Math.floor(l/TS),row)||solid(map,Math.floor(r/TS),row)){
+      p.y=row*TS-PHGT; p.vy=0; p.onGround=true;
+    }
+  } else {
+    const row=Math.floor(p.y/TS);
+    if(solid(map,Math.floor(l/TS),row)||solid(map,Math.floor(r/TS),row)){
+      p.y=(row+1)*TS; p.vy=0;
+    }
+  }
+}
+
+function tickPlayer(p,map,dt,bullets){
+  p.flash=Math.max(0,p.flash-dt);
+  p.shootCD=Math.max(0,p.shootCD-dt);
+
+  if(p.dying){
+    p.dyTimer+=dt;
+    p.dyAngle+=7*dt;
+    p.dyScale=Math.max(0,1-(p.dyTimer-0.1)/0.4);
+    p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    if(p.dyTimer>0.7) p.alive=false;
+    return;
+  }
+
+  const frozen=SRP.type==='freeze'&&SRP.triggered&&SRP.effectTimer<3.5;
+  const spd=frozen?60:195;
+  p.vx=0;
+  const goLeft =K.ArrowLeft ||K.KeyA;
+  const goRight=K.ArrowRight||K.KeyD;
+  if(controlsInverted){
+    if(goLeft ){ p.vx=spd;  p.facing=1;  }
+    if(goRight){ p.vx=-spd; p.facing=-1; }
+  } else {
+    if(goLeft ){ p.vx=-spd; p.facing=-1; }
+    if(goRight){ p.vx=spd;  p.facing=1;  }
+  }
+
+  const jk=K.ArrowUp||K.KeyW||K.Space;
+  if(jk&&!p.jumpHeld&&p.onGround){ p.vy=-540; p.onGround=false; sndJump(); }
+  p.jumpHeld=jk;
+
+  // Shoot
+  if((JP.KeyZ||JP.ControlLeft||JP.KeyX)&&p.bullets>0&&p.shootCD<=0){
+    const bx=p.facing>0 ? p.x+PW : p.x;
+    bullets.push({x:bx, y:p.y+PHGT/2-3, vx:p.facing*520, alive:true});
+    p.bullets--;  p.shootCD=0.22;
+    sndShoot();
+  }
+
+  p.vy=Math.min(p.vy+900*dt,620);
+  p.x+=p.vx*dt;
+  p.x=Math.max(TS,Math.min(p.x,(MW-2)*TS-PW));
+  resolveX(p,map);
+  p.onGround=false;
+  p.y+=p.vy*dt;
+  resolveY(p,map);
+
+  // Spike check
+  const fc=Math.floor((p.x+PW/2)/TS), fb=Math.floor((p.y+PHGT)/TS);
+  if(spike(map,fc,fb)||spike(map,fc,fb-1)) killPlayer(p);
+  if(p.y>MH*TS+60) p.alive=false;
+}
+
+function killPlayer(p){
+  if(p.dying||!p.alive) return;
+  p.dying=true; p.vy=-260; p.vx=(Math.random()-0.5)*200;
+  sndHit();
+}
+
+function drawPlayer(p,camX){
+  if(!p.alive) return;
+  const sx=p.x-camX, sy=HH+p.y;
+  ctx.save();
+  ctx.translate(sx+PW/2, sy+PHGT/2);
+  ctx.rotate(p.dyAngle);
+  ctx.scale(p.dyScale,p.dyScale);
+  // Body
+  ctx.fillStyle=(p.flash>0&&Math.floor(p.flash/0.05)%2===0)?'#fff':'#FF6B35';
+  ctx.fillRect(-PW/2,-PHGT/2,PW,PHGT);
+  // Hat
+  ctx.fillStyle='#2a1a0a';
+  ctx.fillRect(-PW/2,-PHGT/2-6,PW,8);
+  ctx.fillStyle='#3d2a10';
+  ctx.fillRect(-PW/2-3,-PHGT/2-2,PW+6,4);
+  // Eyes
+  ctx.fillStyle='#fff';
+  const ex=p.facing>0?2:-PW/2+2;
+  ctx.fillRect(ex,-PHGT/2+6,7,6);
+  ctx.fillStyle='#000';
+  ctx.fillRect(ex+(p.facing>0?3:2),-PHGT/2+7,3,4);
+  // Gun barrel
+  ctx.fillStyle='#888';
+  if(p.facing>0) ctx.fillRect(PW/2-1,-1,7,4);
+  else           ctx.fillRect(-PW/2-6,-1,7,4);
+  ctx.restore();
+}
+
+// ── Surprise system (rotates each death) ──────────────────────────────────────
+let controlsInverted=false;
+const SRP={
+  types:['dark','invert','spike_wave','ambush','block_barrage','ghost_floor','freeze'],
+  lastType:null, type:null,
+  triggerAt:0, timer:0, triggered:false, effectTimer:0,
+  darkAlpha:0, msg:'', msgTimer:0,
+  ghostTiles:[]  // {col,row,origTile} — look solid but you fall through
+};
+
+function scheduleSurprise(){
+  const avail=SRP.types.filter(t=>t!==SRP.lastType);
+  SRP.type=avail[Math.floor(Math.random()*avail.length)];
+  SRP.lastType=SRP.type;
+  SRP.triggerAt=2+Math.random()*3;
+  SRP.timer=0; SRP.triggered=false; SRP.effectTimer=0;
+  SRP.darkAlpha=0; SRP.msg=''; SRP.msgTimer=0;
+  controlsInverted=false;
+
+  // Ghost floor: pick 3-5 random solid tiles that look real but player falls through
+  SRP.ghostTiles=[];
+  const candidates=[];
+  for(let r=2;r<MH-2;r++) for(let c=2;c<MW-3;c++)
+    if(map[r][c]===T.SOLID&&map[r-1][c]===T.EMPTY) candidates.push({col:c,row:r});
+  const pick=Math.min(5,Math.floor(3+Math.random()*3));
+  for(let i=0;i<pick&&candidates.length>0;i++){
+    const idx=Math.floor(Math.random()*candidates.length);
+    SRP.ghostTiles.push(candidates.splice(idx,1)[0]);
+  }
+}
+
+function activateSurprise(){
+  SRP.triggered=true; SRP.effectTimer=0;
+  switch(SRP.type){
+    case 'dark':
+      SRP.msg='LIGHTS OUT'; SRP.msgTimer=0.4; break;
+    case 'invert':
+      controlsInverted=true;
+      SRP.msg='CONTROLS FLIPPED!'; SRP.msgTimer=0.9; break;
+    case 'spike_wave':{
+      const fromLeft=Math.random()<0.5;
+      const startC=fromLeft?2:MW-4, dir=fromLeft?1:-1;
+      for(let i=0;i<24;i++) setTimeout(()=>{
+        if(gameState!==GS.PLAYING) return;
+        const c=startC+dir*i*2;
+        if(c<2||c>MW-3) return;
+        TRAPS.popSpikes.push({x:c*TS,y:(MH-3)*TS-TS,rise:0,life:2.8,alive:true});
+      },i*55);
+      break;
+    }
+    case 'ambush':{
+      const side=Math.random()<0.5?-1:1;
+      const ex=Math.max(TS,Math.min(player.x+side*6*TS,(MW-2)*TS-24));
+      enemies.push({x:ex,y:(MH-4)*TS,vx:side*-110,vy:0,
+        type:'chaser',alive:true,flash:0,targetX:null,warnTimer:0});
+      SRP.msg='AMBUSH!'; SRP.msgTimer=0.5; break;
+    }
+    case 'block_barrage':
+      for(let i=0;i<7;i++) setTimeout(()=>{
+        if(gameState!==GS.PLAYING) return;
+        const tx=player.x+(Math.random()-0.5)*12*TS;
+        TRAPS.fallingBlocks.push({
+          x:Math.max(0,Math.min(tx-16,(MW-2)*TS-32)),
+          y:2,vy:0,alive:true,onGround:false,groundT:0});
+      },i*180);
+      SRP.msg='INCOMING!'; SRP.msgTimer=0.5; break;
+    case 'ghost_floor':
+      // Tiles silently become hollow — no warning
+      SRP.msg=''; break;
+    case 'freeze':
+      // Player speed halved for 3s
+      SRP.msg='FROZEN!'; SRP.msgTimer=0.6; break;
+  }
+}
+
+function tickSurprise(dt){
+  if(gameState!==GS.PLAYING||player.dying) return;
+  if(graceTimer>0) return; // wait for grace to end
+  SRP.timer+=dt;
+  if(!SRP.triggered&&SRP.timer>=SRP.triggerAt) activateSurprise();
+  if(!SRP.triggered) return;
+  SRP.effectTimer+=dt;
+  if(SRP.msgTimer>0) SRP.msgTimer-=dt;
+  switch(SRP.type){
+    case 'dark':
+      if(SRP.effectTimer<0.3)      SRP.darkAlpha=SRP.effectTimer/0.3*0.93;
+      else if(SRP.effectTimer<2.8) SRP.darkAlpha=0.93;
+      else if(SRP.effectTimer<3.8) SRP.darkAlpha=Math.max(0,0.93-(SRP.effectTimer-2.8));
+      else SRP.darkAlpha=0;
+      break;
+    case 'invert':
+      if(SRP.effectTimer>3.5) controlsInverted=false; break;
+    case 'freeze':
+      break; // handled in tickPlayer
+  }
+}
+
+// Ghost floor: is this tile ghost? (looks solid, isn't)
+function isGhost(c,r){
+  if(!SRP.triggered||SRP.type!=='ghost_floor') return false;
+  return SRP.ghostTiles.some(g=>g.col===c&&g.row===r);
+}
+
+function drawSurpriseOverlay(){
+  if(SRP.darkAlpha>0){
+    ctx.fillStyle=`rgba(0,0,0,${SRP.darkAlpha})`;
+    ctx.fillRect(0,HH,CW,PH);
+  }
+  if(SRP.msg&&SRP.msgTimer>0){
+    const a=Math.min(1,SRP.msgTimer*3);
+    ctx.save();
+    ctx.fillStyle=`rgba(255,50,0,${a})`;
+    ctx.font='bold 34px Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(SRP.msg,CW/2,HH+PH/2);
+    ctx.restore();
+  }
+  if(controlsInverted){
+    ctx.fillStyle=Math.floor(Date.now()/280)%2===0?'rgba(255,120,0,0.85)':'rgba(255,60,0,0.6)';
+    ctx.font='bold 13px Arial';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('⟵  CONTROLS FLIPPED  ⟶',CW/2,HH+6);
+  }
+  if(SRP.type==='freeze'&&SRP.triggered&&SRP.effectTimer<3.5){
+    ctx.fillStyle='rgba(100,180,255,0.12)';
+    ctx.fillRect(0,HH,CW,PH);
+  }
+}
+
+// ── Trap systems ──────────────────────────────────────────────────────────────
+const TRAPS={popSpikes:[],fallingBlocks:[],trackSpikes:[]};
+let fallingBlockCD=2.5;
+let prevDescending=false;
+let graceTimer=5.0; // seconds of safety at run start
+
+function initTraps(){
+  TRAPS.popSpikes=[];
+  TRAPS.fallingBlocks=[];
+  TRAPS.trackSpikes=[];
+  const n=Math.min(3, 1+Math.floor(deathCount/4));
+  for(let i=0;i<n;i++){
+    // Start tracking spikes on the RIGHT side, away from spawn
+    TRAPS.trackSpikes.push({
+      x:(20+i*10+Math.floor(Math.random()*6))*TS,
+      y:(MH-3)*TS, vx:60, alive:true
+    });
+  }
+  fallingBlockCD=99; // won't fire until grace ends
+  graceTimer=5.0;
+}
+
+function tickTraps(dt,player,map,landing){
+  if(player.dying) return;
+  const px=player.x+PW/2, py=player.y+PHGT/2;
+
+  // Grace period — nothing fires
+  if(graceTimer>0){
+    graceTimer-=dt;
+    if(graceTimer<=0){
+      // Grace just ended — arm the block timer
+      fallingBlockCD=2.5;
+    }
+    // Still tick existing traps for cleanup but don't spawn new ones
+    // (fall through to update existing blocks/spikes already alive)
+  }
+
+  // ── Falling blocks ────────────────────────────────────────────────
+  if(graceTimer<=0) fallingBlockCD-=dt;
+  if(fallingBlockCD<=0){
+    fallingBlockCD=Math.max(1.2, 2.8-deathCount*0.06);
+    const tx=landing?landing.x:px;
+    TRAPS.fallingBlocks.push({
+      x:tx-16, y:2, vy:0, alive:true, onGround:false, groundT:0
+    });
+    try{tone(60,0.08,'sawtooth',0.06);}catch(e){}
+  }
+  for(let i=TRAPS.fallingBlocks.length-1;i>=0;i--){
+    const b=TRAPS.fallingBlocks[i];
+    if(!b.alive){TRAPS.fallingBlocks.splice(i,1);continue;}
+    if(!b.onGround){
+      b.vy+=1400*dt; b.y+=b.vy*dt;
+      const bc=Math.floor((b.x+16)/TS), br=Math.floor((b.y+32)/TS);
+      if(solid(map,bc,br)||b.y+32>MH*TS){
+        b.y=Math.floor((b.y+32)/TS)*TS-32;
+        b.onGround=true; b.vy=0;
+        emit(b.x+16,b.y+32,'#888',10,130);
+        try{[140,90].forEach((f,j)=>tone(f,0.12,'sawtooth',0.09,j*0.04));}catch(e){}
+      }
+    } else {
+      b.groundT+=dt;
+      if(b.groundT>0.7){b.alive=false;}
+    }
+    // crush player
+    if(player.alive&&
+       player.x+PW>b.x&&player.x<b.x+32&&
+       player.y+PHGT>b.y&&player.y<b.y+32) killPlayer(player);
+  }
+
+  // ── Pop-up spikes (no warning) ────────────────────────────────────
+  const descending=!player.onGround&&player.vy>60;
+  if(graceTimer<=0&&descending&&!prevDescending&&landing){
+    // Spawn spike exactly at landing spot, rising from surface
+    TRAPS.popSpikes.push({
+      x:landing.x-TS/2, y:landing.y-TS,
+      rise:0, life:2.0, alive:true
+    });
+    // no sound — pure surprise
+  }
+  prevDescending=descending;
+  for(let i=TRAPS.popSpikes.length-1;i>=0;i--){
+    const s=TRAPS.popSpikes[i];
+    if(!s.alive){TRAPS.popSpikes.splice(i,1);continue;}
+    s.rise=Math.min(1, s.rise+dt/0.08); // fully risen in 0.08s
+    s.life-=dt;
+    if(s.life<=0){TRAPS.popSpikes.splice(i,1);continue;}
+    if(player.alive&&
+       Math.abs((s.x+TS/2)-px)<20&&
+       Math.abs((s.y+TS*0.6)-py)<22) killPlayer(player);
+  }
+
+  // ── Tracking spikes (floor level) ────────────────────────────────
+  TRAPS.trackSpikes.forEach(s=>{
+    if(!s.alive) return;
+    const tx=landing?landing.x:px;
+    const dx=tx-s.x;
+    const spd=Math.min(190, 70+deathCount*6);
+    s.vx=dx>0?spd:-spd;
+    // edge guard
+    const fdir=s.vx>0;
+    const fc=Math.floor((s.x+(fdir?14:-14))/TS);
+    const floorR=Math.floor(s.y/TS)+1;
+    if(!solid(map,fc,floorR)||solid(map,fc,floorR-1)) s.vx*=-1;
+    s.x+=s.vx*dt;
+    s.x=Math.max(2*TS,Math.min(s.x,(MW-3)*TS));
+    if(player.alive&&player.onGround&&
+       Math.abs(s.x-px)<20&&Math.abs(s.y-(player.y+PHGT))<24) killPlayer(player);
+  });
+}
+
+function drawTraps(camX){
+  // Falling blocks — shadow on ground first
+  TRAPS.fallingBlocks.forEach(b=>{
+    if(!b.alive||b.onGround) return;
+    const sx=b.x-camX;
+    const groundY=HH+(MH-3)*TS;
+    const alpha=Math.max(0,0.5*(1-b.y/((MH-3)*TS)));
+    ctx.fillStyle=`rgba(255,0,0,${alpha})`;
+    ctx.fillRect(sx+4,groundY,24,4);
+  });
+
+  // Falling blocks — body
+  TRAPS.fallingBlocks.forEach(b=>{
+    if(!b.alive) return;
+    const sx=b.x-camX, sy=HH+b.y;
+    ctx.fillStyle='#5a3a1a';
+    ctx.fillRect(sx,sy,32,32);
+    ctx.fillStyle='#8a6a4a';
+    ctx.fillRect(sx,sy,32,5);
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    ctx.fillRect(sx,sy+28,32,4);
+    // cracks
+    ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(sx+10,sy+8); ctx.lineTo(sx+18,sy+24); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx+22,sy+6); ctx.lineTo(sx+14,sy+22); ctx.stroke();
+  });
+
+  // Pop-up spikes
+  TRAPS.popSpikes.forEach(s=>{
+    if(!s.alive) return;
+    const sx=s.x-camX, sy=HH+s.y;
+    const h=Math.round(16*s.rise);
+    ctx.fillStyle='#cc1100';
+    ctx.shadowColor='#ff2200'; ctx.shadowBlur=6*s.rise;
+    for(let i=0;i<3;i++){
+      const bx=sx+4+i*9;
+      ctx.beginPath();
+      ctx.moveTo(bx,sy+16); ctx.lineTo(bx+7,sy+16);
+      ctx.lineTo(bx+3,sy+16-h);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.shadowBlur=0;
+  });
+
+  // Tracking spikes (floor)
+  TRAPS.trackSpikes.forEach(s=>{
+    if(!s.alive) return;
+    const sx=s.x-camX, sy=HH+s.y;
+    const pulse=0.6+0.4*Math.sin(Date.now()/120);
+    ctx.fillStyle='#ff2200';
+    ctx.shadowColor='#ff4400'; ctx.shadowBlur=10*pulse;
+    ctx.beginPath();
+    ctx.moveTo(sx-10,sy+14); ctx.lineTo(sx+10,sy+14);
+    ctx.lineTo(sx,sy-2);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    // speed lines
+    ctx.strokeStyle='rgba(255,80,0,0.5)'; ctx.lineWidth=1.5;
+    const dir=s.vx>0?-1:1;
+    for(let i=1;i<=3;i++){
+      ctx.beginPath();
+      ctx.moveTo(sx+dir*(12+i*6), sy+6);
+      ctx.lineTo(sx+dir*(12+i*6+8), sy+6);
+      ctx.stroke();
+    }
+  });
+}
+
+// ── Enemies ────────────────────────────────────────────────────────────────────
+// ── Landing predictor ──────────────────────────────────────────────────────────
+function predictLanding(player,map){
+  if(player.onGround) return null;
+  let sx=player.x+PW/2, sy=player.y+PHGT;
+  let svx=player.vx, svy=player.vy;
+  const step=0.05;
+  for(let i=0;i<40;i++){
+    svy+=900*step; sx+=svx*step; sy+=svy*step;
+    if(sy>MH*TS) return null;
+    const col=Math.floor(sx/TS), row=Math.floor(sy/TS);
+    if(solid(map,col,row)) return {x:sx, y:row*TS, col, row};
+  }
+  return null;
+}
+
+function tickEnemies(enemies,map,player,dt,bullets){
+  // Compute predicted landing once per frame (shared across interceptors)
+  const landing=predictLanding(player,map);
+
+  enemies.forEach(e=>{
+    if(!e.alive) return;
+    e.flash=Math.max(0,(e.flash||0)-dt);
+    e.warnTimer=(e.warnTimer||0)+dt;
+
+    const dx=player.x+PW/2-(e.x+12);
+    const dist=Math.abs(dx);
+
+    if(e.type==='interceptor'){
+      if(!player.dying){
+        // Real-time physics prediction: sprint EXACTLY to landing spot
+        if(landing){
+          e.targetX=landing.x;
+          const tdx=landing.x-(e.x+12);
+          // Sprint speed scales with distance — always arrives just in time
+          const spd=Math.min(200, Math.max(110, Math.abs(tdx)*1.8));
+          e.vx=tdx>0?spd:-spd;
+        } else {
+          // Player on ground: chase directly
+          e.targetX=null;
+          e.vx=dx>0?90:-90;
+        }
+        // Wall / edge guard
+        const fdir2=e.vx>0?1:0;
+        const fc3=Math.floor((e.x+(fdir2?26:0))/TS);
+        const floorRow2=Math.floor((e.y+25)/TS);
+        if(solid(map,fc3,Math.floor((e.y+12)/TS))||!solid(map,fc3,floorRow2)){
+          e.vx*=-1;
+        }
+      }
+
+    } else if(e.type==='chaser'&&dist<9*TS&&!player.dying){
+      e.vx=dx>0?75:-75;
+    } else {
+      // Walker: reverse at walls or edges
+      const fdir=e.vx>0?1:0;
+      const fc2=Math.floor((e.x+(fdir?26:0))/TS);
+      const floorRow=Math.floor((e.y+25)/TS);
+      const hitWall=solid(map,fc2,Math.floor((e.y+12)/TS));
+      const noFloor=!solid(map,fc2,floorRow);
+      if(hitWall||noFloor){ e.vx*=-1; e.x+=e.vx*dt*3; }
+    }
+
+    e.vy=Math.min(e.vy+900*dt,600);
+    e.x+=e.vx*dt; e.y+=e.vy*dt;
+    e.x=Math.max(TS,Math.min(e.x,(MW-2)*TS-24));
+
+    // Floor resolve
+    const er=Math.floor((e.y+26)/TS);
+    const ec2=Math.floor((e.x+12)/TS);
+    if(solid(map,ec2,er)){ e.y=er*TS-26; e.vy=0; }
+
+    // Hit player
+    if(!player.dying&&player.alive&&
+       Math.abs(e.x+12-(player.x+PW/2))<20&&
+       Math.abs(e.y+13-(player.y+PHGT/2))<22){
+      killPlayer(player);
+    }
+
+    // Hit by bullet
+    bullets.forEach(b=>{
+      if(!b.alive) return;
+      if(Math.abs(b.x-(e.x+12))<18&&Math.abs(b.y-(e.y+13))<18){
+        b.alive=false; e.alive=false;
+        const col=e.type==='interceptor'?'#FF4400':e.type==='chaser'?'#9933CC':'#44AA44';
+        emit(e.x+12,e.y+13,col,10,110);
+      }
+    });
+  });
+
+  // Store landing for rendering
+}
+
+const eYOff=[0,-2,0,2,0,-2];
+function drawEnemies(enemies,camX){
+
+  enemies.forEach((e,i)=>{
+    if(!e.alive) return;
+    const sx=e.x-camX, sy=HH+e.y;
+    const bob=eYOff[Math.floor(Date.now()/120+i*2)%6];
+    ctx.save(); ctx.translate(sx,sy+bob);
+    // Interceptor pulses red when chasing
+    const intColor=e.targetX!=null?'#FF4400':'#CC2200';
+    ctx.fillStyle=(e.flash>0&&Math.floor(e.flash/0.04)%2===0)?'#fff':
+                  (e.type==='interceptor'?intColor:e.type==='chaser'?'#7722AA':'#228833');
+    // Body blob
+    ctx.beginPath();
+    ctx.ellipse(12,14,12,10,0,0,Math.PI*2);
+    ctx.fill();
+    // Top bump
+    ctx.beginPath(); ctx.ellipse(12,7,8,7,0,0,Math.PI*2); ctx.fill();
+    // Eyes
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.ellipse(7,8,4,4,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(17,8,4,4,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath(); ctx.ellipse(8,9,2,2,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(18,9,2,2,0,0,Math.PI*2); ctx.fill();
+    if(e.type==='chaser'){
+      ctx.strokeStyle='#440055'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
+    }
+    if(e.type==='interceptor'){
+      // Angry V eyebrows
+      ctx.strokeStyle='#880000'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
+      // Arrow on top pointing toward target direction
+      if(e.targetX!=null){
+        const dir=e.vx>=0?1:-1;
+        ctx.fillStyle='#ff4400';
+        ctx.beginPath();
+        if(dir>0){ ctx.moveTo(20,2); ctx.lineTo(26,-2); ctx.lineTo(26,6); }
+        else      { ctx.moveTo(4,2);  ctx.lineTo(-2,-2); ctx.lineTo(-2,6); }
+        ctx.closePath(); ctx.fill();
+      }
+      // Pulsing glow ring when chasing
+      if(e.targetX!=null){
+        const pulse=0.4+0.3*Math.sin(Date.now()/120);
+        ctx.strokeStyle=`rgba(255,80,0,${pulse})`;
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.ellipse(12,12,16,14,0,0,Math.PI*2); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  });
+}
+
+// ── Bullets ────────────────────────────────────────────────────────────────────
+function tickBullets(bullets,map,dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    if(!b.alive){ bullets.splice(i,1); continue; }
+    b.x+=b.vx*dt;
+    if(solid(map,Math.floor(b.x/TS),Math.floor(b.y/TS))){
+      emit(b.x,b.y,'#ffff88',4,60);
+      bullets.splice(i,1);
+    } else if(b.x<TS||b.x>(MW-1)*TS) bullets.splice(i,1);
+  }
+}
+
+function drawBullets(bullets,camX){
+  ctx.fillStyle='#FFFF44';
+  bullets.forEach(b=>{
+    if(!b.alive) return;
+    ctx.fillRect(b.x-camX-5, HH+b.y-3, 12, 6);
+    ctx.fillStyle='rgba(255,255,100,0.4)';
+    ctx.fillRect(b.x-camX-8, HH+b.y-5, 18, 10);
+    ctx.fillStyle='#FFFF44';
+  });
+}
+
+// ── Sliding gem ────────────────────────────────────────────────────────────────
+function tickGems(gems,map,playerX,dt){
+  const alive=gems.filter(g=>!g.collected);
+  if(alive.length!==1) return;
+  const g=alive[0];
+  if(!g.sliding){
+    g.sliding=true;
+    map[g.row][g.col]=T.EMPTY; // remove from map, render manually
+    g.slideDir=g.px>(playerX+PW/2)?1:-1;
+  }
+  g.px+=g.slideDir*g.slideSpd*dt;
+  g.slideSpd=Math.min(g.slideSpd+30*dt,80);
+  // Edge / wall bounce
+  const col=Math.floor(g.px/TS);
+  const floorR=g.row+1;
+  if(!solid(map,col,floorR)||!solid(map,col-1,floorR)||
+     solid(map,col,g.row)||g.px<2*TS||g.px>(MW-3)*TS){
+    g.slideDir*=-1;
+    g.px=Math.max(2*TS,Math.min(g.px,(MW-3)*TS));
+  }
+}
+
+function drawSlidingGem(g,camX){
+  if(g.collected||!g.sliding) return;
+  const sx=g.px-camX-TS/2, sy=HH+g.row*TS;
+  ctx.save(); ctx.translate(sx+TS/2, sy+TS/2);
+  // Hop animation
+  const hop=Math.abs(Math.sin(Date.now()/130))*5;
+  ctx.translate(0,-hop);
+  // Diamond
+  const glow=0.7+0.3*Math.sin(Date.now()/200);
+  ctx.shadowColor='#FFD700'; ctx.shadowBlur=12*glow;
+  ctx.fillStyle='#FFD700';
+  ctx.beginPath();
+  ctx.moveTo(0,-TS/2+5); ctx.lineTo(TS/2-5,0);
+  ctx.lineTo(0,TS/2-5);  ctx.lineTo(-TS/2+5,0);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur=0;
+  // Shine
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(0,-TS/2+5); ctx.lineTo(TS/2-5,0); ctx.lineTo(0,-4);
+  ctx.closePath(); ctx.fill();
+  // Tiny running legs
+  ctx.fillStyle='#cc8800';
+  const lk=Math.sin(Date.now()/90);
+  ctx.fillRect(-5,TS/2-8,4,6+lk*3);
+  ctx.fillRect(1,TS/2-8,4,6-lk*3);
+  ctx.restore();
+  // Speech bubble "!לא לא" blinking
+  if(Math.floor(Date.now()/400)%2===0){
+    const bx=sx+(g.slideDir>0?TS+2:-42), by=sy-2;
+    ctx.fillStyle='rgba(255,255,220,0.92)';
+    roundRect(bx,by,42,18,4);
+    ctx.fill();
+    ctx.fillStyle='#333'; ctx.font='bold 11px Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('NO! NO!',bx+21,by+9);
+  }
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+// ── Camera ─────────────────────────────────────────────────────────────────────
+let camX=0, targetCamX=0;
+function updateCam(px,dt){
+  targetCamX=Math.max(0,Math.min(px-CW/2+PW/2, MW*TS-CW));
+  camX+=(targetCamX-camX)*Math.min(1,dt*10);
+}
+
+// ── HUD ────────────────────────────────────────────────────────────────────────
+function drawHUD(p,gc,gt,deaths,totalSec,lv){
+  ctx.fillStyle='#0d0d1a';
+  ctx.fillRect(0,0,CW,HH);
+  ctx.strokeStyle='#1a1a40'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,HH); ctx.lineTo(CW,HH); ctx.stroke();
+
+  // Left: level + deaths
+  ctx.fillStyle='#cc3333'; ctx.font='bold 15px Arial';
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillText(`DEATH #${deaths}`, 12, 8);
+  ctx.fillStyle='#888'; ctx.font='12px Arial';
+  ctx.fillText(`LEVEL ${lv}`, 12, 28);
+
+  // Center: gems
+  ctx.font='bold 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  // draw gem icon
+  ctx.fillStyle='#FFD700';
+  ctx.shadowColor='#FFD700'; ctx.shadowBlur=6;
+  ctx.beginPath();
+  ctx.moveTo(CW/2-60,HH/2); ctx.lineTo(CW/2-53,HH/2-7);
+  ctx.lineTo(CW/2-46,HH/2); ctx.lineTo(CW/2-53,HH/2+7);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.fillStyle= gc>=gt ? '#00ff88' : '#eee';
+  ctx.fillText(`${gc} / ${gt}  GEMS`, CW/2+8, HH/2);
+
+  // Right: bullets + timer
+  ctx.fillStyle='#FFFF44'; ctx.font='bold 13px Arial';
+  ctx.textAlign='right'; ctx.textBaseline='top';
+  const bStr='▮'.repeat(p.bullets)+'▯'.repeat(Math.max(0,8-p.bullets));
+  ctx.fillText(`AMMO ${bStr}`, CW-12, 8);
+  const m=Math.floor(totalSec/60), s=Math.floor(totalSec)%60;
+  ctx.fillStyle='#666'; ctx.font='12px Arial';
+  ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.fillText(`${m}:${String(s).padStart(2,'0')}`, CW-12, 28);
+}
+
+// ── Death / Win screens ────────────────────────────────────────────────────────
+function drawDeadScreen(msg,deaths,gc,gt,totalSec){
+  ctx.fillStyle='rgba(0,0,0,0.9)';
+  ctx.fillRect(0,HH,CW,PH);
+  const cx=CW/2, cy=HH+PH/2;
+
+  ctx.font='44px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('💀',cx,cy-110);
+
+  ctx.fillStyle='#ff3333'; ctx.font='bold 23px Arial';
+  // word wrap
+  const words=msg.split(' '); let ln='', lines=[];
+  for(const w of words){
+    const t=ln?ln+' '+w:w;
+    ctx.font='bold 23px Arial';
+    if(ctx.measureText(t).width>700){ lines.push(ln); ln=w; } else ln=t;
+  }
+  lines.push(ln);
+  lines.forEach((l,i)=>ctx.fillText(l,cx,cy-55+i*32));
+
+  ctx.fillStyle='#999'; ctx.font='15px Arial';
+  const m=Math.floor(totalSec/60), s=Math.floor(totalSec)%60;
+  ctx.fillText(`Attempt #${deaths}  |  Total time: ${m}:${String(s).padStart(2,'0')}  |  Gems: ${gc}/${gt}`,cx,cy+60);
+
+  if(Math.floor(Date.now()/500)%2===0){
+    ctx.fillStyle='#FFD700'; ctx.font='bold 16px Arial';
+    ctx.fillText('Press SPACE to try again  (don\'t do it)',cx,cy+105);
+  }
+}
+
+function drawWinScreen(lv){
+  ctx.fillStyle='rgba(0,20,0,0.88)';
+  ctx.fillRect(0,HH,CW,PH);
+  const cx=CW/2, cy=HH+PH/2;
+  ctx.font='46px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('🏆',cx,cy-80);
+  ctx.fillStyle='#00ff88'; ctx.font='bold 28px Arial';
+  ctx.fillText(`Level ${lv} complete!`,cx,cy-20);
+  ctx.fillStyle='#aaa'; ctx.font='18px Arial';
+  ctx.fillText('...but the next level will be much worse',cx,cy+25);
+  if(Math.floor(Date.now()/500)%2===0){
+    ctx.fillStyle='#FFD700'; ctx.font='bold 16px Arial';
+    ctx.fillText('SPACE → next level',cx,cy+75);
+  }
+}
+
+// ── Background stars ───────────────────────────────────────────────────────────
+const STARS=Array.from({length:60},()=>({
+  x:Math.random()*MW*TS, y:Math.random()*PH, r:Math.random()
+}));
+function drawBG(cx2){
+  ctx.fillStyle='#080818';
+  ctx.fillRect(0,HH,CW,PH);
+  STARS.forEach(s=>{
+    const twink=0.3+0.5*Math.sin(Date.now()/700+s.r*10);
+    ctx.fillStyle=`rgba(255,255,255,${twink})`;
+    ctx.fillRect(s.x-cx2*0.15, HH+s.y, 1+s.r, 1+s.r);
+  });
+}
+
+// ── Game state ─────────────────────────────────────────────────────────────────
+let gameState=GS.PLAYING;
+
+// ── Map snapshot (fixed maps per level) ───────────────────────────────────────
+let savedMap=null, savedGems=null, savedEnems=null;
+
+function saveSnapshot(){
+  savedMap  = map.map(row=>new Uint8Array(row));
+  savedGems = gems.map(g=>({...g}));
+  savedEnems= enemies.map(e=>({...e,targetX:null,warnTimer:0}));
+}
+
+function restoreSnapshot(){
+  map     = savedMap.map(row=>new Uint8Array(row));
+  gems    = savedGems.map(g=>({...g,collected:false,sliding:false,slideSpd:28,px:g.col*TS+TS/2}));
+  enemies = savedEnems.map(e=>({...e,alive:true,flash:0,vy:0,targetX:null,warnTimer:0}));
+  totalGems=gems.length;
+  doorOpen =false;
+  map[doorRow][doorCol]=T.DOOR;
+}
+
+// ── Player movement statistics ─────────────────────────────────────────────────
+// presenceMap: X-bucket → frames spent there (on ground)
+// jumpHistory: last 15 landing X positions
+const presenceMap={};
+const jumpHistory=[];
+let wasOnGround=true;
+let presenceTick=0; // sample every 6 frames to avoid flooding
+
+function recordPresence(x){
+  const b=Math.round(x/(TS*3))*(TS*3);
+  presenceMap[b]=(presenceMap[b]||0)+1;
+}
+
+function resetStats(){
+  for(const k in presenceMap) delete presenceMap[k];
+  jumpHistory.length=0;
+}
+
+// Returns X of the bucket the player visits most (presence + landings combined)
+function getHotspot(){
+  const combined={};
+  // Presence weight ×1
+  for(const [b,n] of Object.entries(presenceMap)) combined[b]=(combined[b]||0)+n;
+  // Landings weight ×3 (more intentional)
+  jumpHistory.forEach(x=>{
+    const b=Math.round(x/(TS*3))*(TS*3);
+    combined[b]=(combined[b]||0)+3;
+  });
+  let best=null,bestN=0;
+  for(const [bx,n] of Object.entries(combined)){
+    if(n>bestN){ bestN=n; best=+bx; }
+  }
+  // Need at least some data before acting
+  return bestN>=4 ? best : null;
+}
+let deathCount=0, levelNum=1;
+let totalTime=0;
+let overlayAlpha=0, deadMsg='';
+let gemsGot=0, deadGG=0, deadGT=0;
+let doorOpen=false;
+let winFlash=0;
+
+let {map,gems,totalGems,enemies,doorCol,doorRow}=genLevel(0,1);
+let player=mkPlayer();
+let bullets=[];
+
+function spawnPlayer(){
+  // Find solid tile near col 2-3, bottom half
+  for(let r=MH-3;r>=2;r--){
+    if(map[r][2]===T.SOLID&&map[r-1][2]===T.EMPTY){
+      player.x=2*TS+4; player.y=(r-1)*TS; return;
+    }
+  }
+  player.x=2*TS+4; player.y=(MH-4)*TS;
+}
+spawnPlayer();
+initTraps();
+scheduleSurprise();
+saveSnapshot(); // שמור snapshot ראשוני
+
+function resetRun(newLevel){
+  if(newLevel){
+    levelNum++;
+    ({map,gems,totalGems,enemies,doorCol,doorRow}=genLevel(deathCount,levelNum));
+    saveSnapshot();
+    resetStats(); // אפס סטטיסטיקה לרמה חדשה
+  } else {
+    restoreSnapshot(); // אותה מפה בדיוק
+  }
+  player=mkPlayer(); spawnPlayer();
+  bullets=[]; PARTS.length=0;
+  gemsGot=0; overlayAlpha=0; winFlash=0;
+  initTraps();
+  scheduleSurprise();
+  controlsInverted=false;
+  prevDescending=false;
+  gameState=GS.PLAYING;
+  for(const k in crackSeeds) delete crackSeeds[k];
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────────
+let lastTs=0;
+function loop(ts){
+  const dt=Math.min((ts-lastTs)/1000,0.05);
+  lastTs=ts;
+  tickInput();
+  totalTime+=dt;
+
+  // ── Update ──
+  if(gameState===GS.PLAYING){
+    const prevGround=wasOnGround;
+    tickPlayer(player,map,dt,bullets);
+    wasOnGround=player.onGround;
+    if(!player.dying){
+      // נחיתה — משקל גבוה
+      if(!prevGround && player.onGround){
+        jumpHistory.push(player.x+PW/2);
+        if(jumpHistory.length>15) jumpHistory.shift();
+      }
+      // נוכחות על הקרקע — דגימה כל 6 פריימים
+      if(player.onGround){ presenceTick++; if(presenceTick%6===0) recordPresence(player.x+PW/2); }
+    }
+    tickSurprise(dt);
+    tickEnemies(enemies,map,player,dt,bullets);
+    tickTraps(dt,player,map,predictLanding(player,map));
+    tickBullets(bullets,map,dt);
+    tickParts(dt);
+    tickGems(gems,map,player.x,dt);
+
+    // Gem pickup
+    gems.forEach(g=>{
+      if(g.collected) return;
+      const gx=g.sliding?g.px:g.col*TS+TS/2;
+      const gy=g.row*TS+TS/2;
+      if(Math.abs(gx-(player.x+PW/2))<TS-2&&Math.abs(gy-(player.y+PHGT/2))<TS-2){
+        g.collected=true;
+        if(!g.sliding) map[g.row][g.col]=T.EMPTY;
+        gemsGot++;
+        emit(gx,gy,'#FFD700',12,100);
+        sndGem();
+        if(gemsGot>=totalGems&&!doorOpen){
+          doorOpen=true;
+          map[doorRow][doorCol]=T.DOOR_OPEN;
+          sndOpen();
+          emit(doorCol*TS+TS/2,doorRow*TS+TS/2,'#00ff88',20,80);
+        }
+      }
+    });
+
+    // Door exit
+    if(doorOpen){
+      const dpx=doorCol*TS, dpy=doorRow*TS;
+      if(player.x+PW>dpx&&player.x<dpx+TS&&
+         player.y+PHGT>dpy&&player.y<dpy+TS){
+        gameState=GS.WIN; sndWin();
+      }
+    }
+
+    // Player died
+    if(!player.alive){
+      deathCount++;
+      deadMsg=pickInsult(deathCount,gemsGot,totalGems,levelNum);
+      deadGG=gemsGot; deadGT=totalGems;
+      gameState=GS.DYING;
+    }
+
+    updateCam(player.x,dt);
+
+  } else if(gameState===GS.DYING){
+    tickParts(dt);
+    tickPlayer(player,map,dt,bullets); // let body fall
+    overlayAlpha=Math.min(0.92,overlayAlpha+dt*2.8);
+    if(overlayAlpha>0.55&&!player.alive){ gameState=GS.DEAD; }
+
+  } else if(gameState===GS.DEAD){
+    tickParts(dt);
+    if(JP.Space){ resetRun(false); }
+
+  } else if(gameState===GS.WIN){
+    winFlash+=dt;
+    if(JP.Space){ resetRun(true); }
+  }
+
+  // ── Render ──
+  drawBG(camX);
+  renderMap(map,camX);
+
+  // Render sliding gems manually
+  gems.forEach(g=>drawSlidingGem(g,camX));
+
+  drawTraps(camX);
+  drawBullets(bullets,camX);
+  drawEnemies(enemies,camX);
+  drawParts(camX);
+  drawPlayer(player,camX);
+  drawSurpriseOverlay();
+
+  // Win flash overlay
+  if(gameState===GS.WIN){
+    ctx.fillStyle=`rgba(0,255,100,${0.15+0.1*Math.sin(winFlash*8)})`;
+    ctx.fillRect(0,HH,CW,PH);
+    drawWinScreen(levelNum);
+  }
+
+  // Death overlay
+  if(gameState===GS.DYING||gameState===GS.DEAD){
+    ctx.fillStyle=`rgba(0,0,0,${overlayAlpha})`;
+    ctx.fillRect(0,HH,CW,PH);
+    if(gameState===GS.DEAD) drawDeadScreen(deadMsg,deathCount,deadGG,deadGT,totalTime);
+  }
+
+  drawHUD(player,gemsGot,totalGems,deathCount,totalTime,levelNum);
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
