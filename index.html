@@ -12,7 +12,7 @@ canvas { display:block; image-rendering:pixelated; border:1px solid #1a1a2e; }
 </head>
 <body>
 <canvas id="g"></canvas>
-<div id="info">ARROWS = move &nbsp;|&nbsp; SPACE / ↑ = jump &nbsp;|&nbsp; Z = shoot</div>
+<div id="info">← → = move &nbsp;|&nbsp; SPACE / ↑ = jump &nbsp;|&nbsp; Z = shoot</div>
 <script>
 'use strict';
 
@@ -37,7 +37,7 @@ const JP={};   // justPressed
 let prevK={};
 addEventListener('keydown',e=>{
   K[e.code]=true;
-  ['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)&&e.preventDefault();
+  ['Space','ArrowUp','ArrowLeft','ArrowRight'].includes(e.code)&&e.preventDefault();
 });
 addEventListener('keyup',e=>{ K[e.code]=false; });
 function tickInput(){
@@ -462,7 +462,7 @@ function drawPlayer(p,camX){
 // ── Surprise system (rotates each death) ──────────────────────────────────────
 let controlsInverted=false;
 const SRP={
-  types:['dark','invert','spike_wave','ambush','block_barrage','ghost_floor','freeze'],
+  types:['dark','spike_wave','ambush','block_barrage','ghost_floor','freeze'],
   lastType:null, type:null,
   triggerAt:0, timer:0, triggered:false, effectTimer:0,
   darkAlpha:0, msg:'', msgTimer:0,
@@ -470,7 +470,7 @@ const SRP={
 };
 
 function scheduleSurprise(){
-  const avail=SRP.types.filter(t=>t!==SRP.lastType);
+  const avail=SRP.types.filter(t=>t!==SRP.lastType&&!(t==='invert'&&(levelNum<3||deathCount<5)));
   SRP.type=avail[Math.floor(Math.random()*avail.length)];
   SRP.lastType=SRP.type;
   SRP.triggerAt=2+Math.random()*3;
@@ -894,15 +894,6 @@ function drawEnemies(enemies,camX){
       ctx.strokeStyle='#880000'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
-      // Arrow on top pointing toward target direction
-      if(e.targetX!=null){
-        const dir=e.vx>=0?1:-1;
-        ctx.fillStyle='#ff4400';
-        ctx.beginPath();
-        if(dir>0){ ctx.moveTo(20,2); ctx.lineTo(26,-2); ctx.lineTo(26,6); }
-        else      { ctx.moveTo(4,2);  ctx.lineTo(-2,-2); ctx.lineTo(-2,6); }
-        ctx.closePath(); ctx.fill();
-      }
       // Pulsing glow ring when chasing
       if(e.targetX!=null){
         const pulse=0.4+0.3*Math.sin(Date.now()/120);
