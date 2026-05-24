@@ -856,39 +856,66 @@ function drawEnemies(enemies,camX){
     const sx=e.x-camX, sy=HH+e.y;
     const bob=eYOff[Math.floor(Date.now()/120+i*2)%6];
     ctx.save(); ctx.translate(sx,sy+bob);
-    // Interceptor pulses red when chasing
-    const intColor=e.targetX!=null?'#FF4400':'#CC2200';
-    ctx.fillStyle=(e.flash>0&&Math.floor(e.flash/0.04)%2===0)?'#fff':
-                  (e.type==='interceptor'?intColor:e.type==='chaser'?'#7722AA':'#228833');
-    // Body blob
-    ctx.beginPath();
-    ctx.ellipse(12,14,12,10,0,0,Math.PI*2);
-    ctx.fill();
-    // Top bump
-    ctx.beginPath(); ctx.ellipse(12,7,8,7,0,0,Math.PI*2); ctx.fill();
-    // Eyes
-    ctx.fillStyle='#fff';
-    ctx.beginPath(); ctx.ellipse(7,8,4,4,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(17,8,4,4,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#111';
-    ctx.beginPath(); ctx.ellipse(8,9,2,2,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(18,9,2,2,0,0,Math.PI*2); ctx.fill();
-    if(e.type==='chaser'){
-      ctx.strokeStyle='#440055'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
-    }
+    const flashing=e.flash>0&&Math.floor(e.flash/0.04)%2===0;
+
     if(e.type==='interceptor'){
-      // Angry V eyebrows
-      ctx.strokeStyle='#880000'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
-      // Pulsing glow ring when chasing
+      // ── Bird ──
+      const dir=e.vx>=0?1:-1;
+      ctx.save(); ctx.scale(dir,1); ctx.translate(dir<0?-24:0,0);
+      const wingT=Date.now()/180;
+      const wingAngle=e.targetX!=null
+        ? Math.sin(wingT*2.5)*0.55          // fast flap when chasing
+        : Math.sin(wingT)*0.3;              // slow glide otherwise
+      const bodyColor=flashing?'#fff':(e.targetX!=null?'#CC2200':'#882200');
+      // Body
+      ctx.fillStyle=bodyColor;
+      ctx.beginPath(); ctx.ellipse(12,14,9,6,0,0,Math.PI*2); ctx.fill();
+      // Head
+      ctx.beginPath(); ctx.ellipse(19,10,5,5,0,0,Math.PI*2); ctx.fill();
+      // Beak
+      ctx.fillStyle='#FFAA00';
+      ctx.beginPath(); ctx.moveTo(23,10); ctx.lineTo(28,12); ctx.lineTo(23,13); ctx.closePath(); ctx.fill();
+      // Eye
+      ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.ellipse(20,9,2,2,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#111';
+      ctx.beginPath(); ctx.ellipse(21,9,1,1,0,0,Math.PI*2); ctx.fill();
+      // Tail feathers
+      ctx.fillStyle=bodyColor;
+      ctx.beginPath(); ctx.moveTo(3,12); ctx.lineTo(-5,8); ctx.lineTo(-4,15); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(3,14); ctx.lineTo(-6,14); ctx.lineTo(-3,19); ctx.closePath(); ctx.fill();
+      // Wings
+      ctx.save(); ctx.translate(12,12); ctx.rotate(-wingAngle);
+      ctx.fillStyle=flashing?'#fff':(e.targetX!=null?'#FF4400':'#AA1100');
+      ctx.beginPath(); ctx.ellipse(0,-2,10,4,-0.3,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(12,14); ctx.rotate(wingAngle+0.2);
+      ctx.fillStyle=flashing?'#fff':(e.targetX!=null?'#FF6600':'#CC2200');
+      ctx.beginPath(); ctx.ellipse(0,2,10,4,0.3,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      // Pulsing glow when chasing
       if(e.targetX!=null){
-        const pulse=0.4+0.3*Math.sin(Date.now()/120);
+        const pulse=0.3+0.25*Math.sin(Date.now()/120);
         ctx.strokeStyle=`rgba(255,80,0,${pulse})`;
-        ctx.lineWidth=3;
-        ctx.beginPath(); ctx.ellipse(12,12,16,14,0,0,Math.PI*2); ctx.stroke();
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.ellipse(12,12,18,12,0,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.restore();
+    } else {
+      // ── Original blob for chaser/walker ──
+      ctx.fillStyle=flashing?'#fff':(e.type==='chaser'?'#7722AA':'#228833');
+      ctx.beginPath(); ctx.ellipse(12,14,12,10,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(12,7,8,7,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.ellipse(7,8,4,4,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(17,8,4,4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#111';
+      ctx.beginPath(); ctx.ellipse(8,9,2,2,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(18,9,2,2,0,0,Math.PI*2); ctx.fill();
+      if(e.type==='chaser'){
+        ctx.strokeStyle='#440055'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(3,3); ctx.lineTo(11,7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(21,3); ctx.lineTo(13,7); ctx.stroke();
       }
     }
     ctx.restore();
