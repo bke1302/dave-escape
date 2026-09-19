@@ -31,8 +31,11 @@ A full Hebrew (RTL) blackjack learning app — game engine, 15-chapter course, H
 card-counting trainers, casino simulation, Monte Carlo simulator and risk analysis.
 Installable on iPhone/Android as a PWA and works offline.
 
+**[Play it now](https://bke1302.github.io/dave-escape/blackjack/)** — or add it to your
+phone's home screen to run it full-screen and offline.
+
 Source and docs: [`blackjack-master/`](blackjack-master/README.md) ·
-Deployable folder: `blackjack-master/web/`
+Published folder: `blackjack/` (served by GitHub Pages at `/blackjack/`)
 
 ```bash
 cd blackjack-master && npm run build && npm run serve

@@ -9,15 +9,18 @@
 
 ```bash
 cd blackjack-master
-npm run build     # קומפילציה של TypeScript אל web/js
+npm run build     # קומפילציה של TypeScript אל ../blackjack/js
 npm run serve     # שרת מקומי על http://localhost:4173
 npm test          # 126 בדיקות מנוע, מתמטיקה ותוכן
 npm run typecheck # בדיקת טיפוסים מלאה
 ```
 
-התיקייה `web/` היא האפליקציה המוכנה (כולל קוד בנוי) — אפשר להעלות אותה כמות שהיא
-לכל אחסון סטטי, למשל GitHub Pages. בטלפון: פתיחה בדפדפן ← "הוסף למסך הבית",
-ומכאן האפליקציה פועלת במסך מלא וללא אינטרנט.
+התיקייה `blackjack/` בשורש המאגר היא האפליקציה המוכנה לפרסום (כולל הקוד הבנוי),
+ולכן GitHub Pages מגיש אותה ישירות תחת `/blackjack/` — בלי שלב בנייה בשרת.
+
+**בטלפון:** פתיחת הכתובת בדפדפן ← תפריט השיתוף ← "הוסף למסך הבית"
+(iPhone: Safari · Android: Chrome). מכאן האפליקציה נפתחת במסך מלא, בלי סרגלי
+דפדפן, ועובדת גם ללא אינטרנט.
 
 ## למה PWA ולא React Native / Expo
 
@@ -59,7 +62,8 @@ src/
   screens/         23 מסכים
   workers/         Worker לסימולציות
 tests/             126 בדיקות
-web/               האפליקציה הסטטית (index.html, CSS, אייקונים, sw.js, js בנוי)
+
+../blackjack/      האפליקציה הסטטית לפרסום (index.html, CSS, אייקונים, sw.js, js בנוי)
 ```
 
 ## המתמטיקה — ומה מאומת מול מה

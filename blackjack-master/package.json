@@ -8,7 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "node --test --test-timeout=600000 tests/*.test.ts",
-    "serve": "npx --yes serve web -l 4173",
+    "serve": "npx --yes serve ../blackjack -l 4173",
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {
