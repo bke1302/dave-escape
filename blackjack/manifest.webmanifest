@@ -1,7 +1,7 @@
 {
-  "name": "BLACKJACK MASTER — לימוד ותרגול",
-  "short_name": "Blackjack Master",
-  "description": "אפליקציית לימוד ותרגול בלאק ג'ק בעברית: משחק מלא, אסטרטגיה בסיסית, ספירת קלפים, True Count, סימולציות וניתוח סטטיסטי.",
+  "name": "CASINO ACADEMY — בלאק ג'ק ובאקרה",
+  "short_name": "Casino Academy",
+  "description": "אפליקציית לימוד ותרגול בעברית לשני משחקי קזינו: בלאק ג'ק (אסטרטגיה בסיסית, ספירת קלפים, True Count) ובאקרה (חוקי הקלף השלישי, לוחות תוצאות, הסתברויות) — עם סימולטורים וניתוח סטטיסטי.",
   "lang": "he",
   "dir": "rtl",
   "start_url": "./index.html",

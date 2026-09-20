@@ -16,17 +16,59 @@ export function appHeader(options) {
         }, h('span', { class: 'icon-chevron', text: '›' }))
         : h('span', { class: 'header-spacer' }), h('div', { class: 'header-titles' }, options.title ? h('h1', { class: 'header-title', text: options.title }) : null, options.subtitle ? h('p', { class: 'header-subtitle', text: options.subtitle }) : null), options.action ?? h('span', { class: 'header-spacer' }));
 }
-export const NAV_ITEMS = [
+/** ניווט ראשי — בחירה בין המשחקים. */
+export const MAIN_NAV = [
     { path: '/home', label: 'בית', icon: '🏠' },
+    { path: '/blackjack', label: 'בלאק ג׳ק', icon: '🃏' },
+    { path: '/baccarat', label: 'באקרה', icon: '♦️' },
+    { path: '/overview', label: 'התקדמות', icon: '🏆' },
+    { path: '/settings', label: 'הגדרות', icon: '⚙️' },
+];
+/** ניווט בתוך עולם הבלאק ג'ק. */
+export const BLACKJACK_NAV = [
+    { path: '/blackjack', label: 'בית', icon: '🃏' },
     { path: '/game', label: 'משחק', icon: '🎰' },
     { path: '/training', label: 'אימון', icon: '🧠' },
     { path: '/stats', label: 'נתונים', icon: '📊' },
     { path: '/settings', label: 'הגדרות', icon: '⚙️' },
 ];
+/** ניווט בתוך עולם הבאקרה. */
+export const BACCARAT_NAV = [
+    { path: '/baccarat', label: 'בית', icon: '♦️' },
+    { path: '/baccarat/play', label: 'שחק', icon: '🎴' },
+    { path: '/baccarat/learn', label: 'למד', icon: '📚' },
+    { path: '/baccarat/train', label: 'אימון', icon: '🧠' },
+    { path: '/baccarat/stats', label: 'נתונים', icon: '📈' },
+];
+/** מסכי הבלאק ג'ק — לפיהם נבחר סרגל הניווט המתאים. */
+const BLACKJACK_PREFIXES = [
+    '/blackjack', '/game', '/learn', '/strategy', '/training', '/counting', '/running-count',
+    '/true-count', '/deck-estimation', '/betting', '/deviations', '/casino', '/simulator',
+    '/compare', '/bankroll', '/progress', '/daily', '/stats',
+];
+/** בוחר את סרגל הניווט לפי המסך הנוכחי. */
+export function navItemsFor(path) {
+    if (path.startsWith('/baccarat'))
+        return BACCARAT_NAV;
+    if (BLACKJACK_PREFIXES.some((prefix) => path.startsWith(prefix)))
+        return BLACKJACK_NAV;
+    return MAIN_NAV;
+}
+/** שמירה על תאימות לאחור. */
+export const NAV_ITEMS = BLACKJACK_NAV;
+/** האם פריט הניווט הוא הפעיל — הפריט הספציפי ביותר שמתאים לנתיב מנצח. */
+function isNavActive(path, item, items) {
+    const matching = items.filter((candidate) => path === candidate.path || path.startsWith(`${candidate.path}/`));
+    if (!matching.length)
+        return false;
+    const best = matching.reduce((a, b) => (b.path.length > a.path.length ? b : a));
+    return best.path === item.path;
+}
 export function bottomNav(activePath) {
-    return h('nav', { class: 'bottom-nav', attrs: { 'aria-label': 'ניווט ראשי' } }, ...NAV_ITEMS.map((item) => h('button', {
-        class: `nav-item${activePath.startsWith(item.path) ? ' active' : ''}`,
-        attrs: { type: 'button', 'aria-label': item.label, 'aria-current': activePath.startsWith(item.path) ? 'page' : 'false' },
+    const items = navItemsFor(activePath);
+    return h('nav', { class: 'bottom-nav', attrs: { 'aria-label': 'ניווט ראשי' } }, ...items.map((item) => h('button', {
+        class: `nav-item${isNavActive(activePath, item, items) ? ' active' : ''}`,
+        attrs: { type: 'button', 'aria-label': item.label, 'aria-current': isNavActive(activePath, item, items) ? 'page' : 'false' },
         on: {
             click: () => {
                 sfx.tap();

@@ -25,10 +25,16 @@ Vanilla JavaScript + HTML5 Canvas, in a single self-contained file. Deployed via
 
 ---
 
-## Also in this repo: BLACKJACK MASTER
+## Also in this repo: CASINO ACADEMY
 
-A full Hebrew (RTL) blackjack learning app — game engine, 15-chapter course, Hi-Lo
-card-counting trainers, casino simulation, Monte Carlo simulator and risk analysis.
+A full Hebrew (RTL) casino-training app covering **two games**:
+
+- **Blackjack** — game engine, 15-chapter course, Hi-Lo counting trainers, casino
+  simulation, Monte Carlo simulator and risk analysis.
+- **Baccarat** — Punto Banco engine with exact third-card rules, 14-chapter course,
+  third-card / hand-value / full-hand / road trainers, exact probability and house-edge
+  math, and a Monte Carlo + session simulator.
+
 Installable on iPhone/Android as a PWA and works offline.
 
 **[Play it now](https://bke1302.github.io/dave-escape/blackjack/)** — or add it to your

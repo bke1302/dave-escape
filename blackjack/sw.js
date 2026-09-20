@@ -1,5 +1,5 @@
 /* Service Worker — מאפשר עבודה מלאה ללא חיבור לאינטרנט. */
-const CACHE = 'bjm-v1';
+const CACHE = 'bjm-v2';
 
 const APP_SHELL = [
   './',

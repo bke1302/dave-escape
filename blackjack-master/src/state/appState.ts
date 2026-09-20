@@ -122,6 +122,12 @@ export interface AppState {
   settings: Settings;
   stats: AppStats;
   progress: Progress;
+  /**
+   * מצב מודול הבאקרה. מוגדר כמפתח עליון נפרד כדי שמצב הבלאק ג'ק לא יושפע,
+   * וכדי שמצבים שנשמרו לפני הוספת המודול ימשיכו לעבוד (המיזוג בחנות מוסיף
+   * את ברירת המחדל). הטיפוס המלא מוגדר ב-src/baccarat/state.ts.
+   */
+  baccarat?: unknown;
 }
 
 function emptyTrainer(): TrainerStats {
