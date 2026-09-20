@@ -12,7 +12,9 @@ import { dailyScreen } from './screens/daily.ts';
 import { deckEstimationScreen } from './screens/deckEstimation.ts';
 import { deviationTrainerScreen } from './screens/deviationTrainer.ts';
 import { gameScreen } from './screens/game.ts';
-import { homeScreen } from './screens/home.ts';
+import { blackjackHomeScreen } from './screens/home.ts';
+import { mainHomeScreen } from './screens/mainHome.ts';
+import { overviewScreen } from './screens/overview.ts';
 import { learnScreen } from './screens/learn.ts';
 import { lessonScreen } from './screens/lesson.ts';
 import { progressScreen } from './screens/progress.ts';
@@ -27,9 +29,30 @@ import { strategyTrainerScreen } from './screens/strategyTrainer.ts';
 import { trainingScreen } from './screens/training.ts';
 import { trueCountScreen } from './screens/trueCountTrainer.ts';
 
+// ── מודול הבאקרה ──────────────────────────────────────────────────────────────
+import { baccaratHomeScreen } from './baccarat/screens/home.ts';
+import { baccaratLearnScreen } from './baccarat/screens/learn.ts';
+import { baccaratLessonScreen } from './baccarat/screens/lesson.ts';
+import { baccaratPlayScreen } from './baccarat/screens/play.ts';
+import { baccaratTrainHubScreen } from './baccarat/screens/trainHub.ts';
+import { baccaratHandTrainerScreen } from './baccarat/screens/handTrainer.ts';
+import { baccaratThirdCardTrainerScreen } from './baccarat/screens/thirdCardTrainer.ts';
+import { baccaratFullHandTrainerScreen } from './baccarat/screens/fullHandTrainer.ts';
+import { baccaratRoadTrainerScreen } from './baccarat/screens/roadTrainer.ts';
+import { baccaratProbabilityScreen } from './baccarat/screens/probability.ts';
+import { baccaratTrackingScreen } from './baccarat/screens/tracking.ts';
+import { baccaratSimulatorScreen } from './baccarat/screens/simulator.ts';
+import { baccaratStatsScreen } from './baccarat/screens/stats.ts';
+import { baccaratProgressScreen } from './baccarat/screens/progress.ts';
+import { baccaratSettingsScreen } from './baccarat/screens/settings.ts';
+
 function registerRoutes(): void {
   registerScreen('/splash', splashScreen);
-  registerScreen('/home', homeScreen);
+  registerScreen('/home', mainHomeScreen);
+  registerScreen('/overview', overviewScreen);
+
+  // ── בלאק ג'ק ──
+  registerScreen('/blackjack', blackjackHomeScreen);
   registerScreen('/game', gameScreen);
   registerScreen('/learn', learnScreen);
   registerScreen('/learn/:lessonId', lessonScreen);
@@ -52,6 +75,23 @@ function registerRoutes(): void {
   registerScreen('/stats', statsScreen);
   registerScreen('/settings', settingsScreen);
   registerScreen('/responsible', responsibleScreen);
+
+  // ── באקרה ──
+  registerScreen('/baccarat', baccaratHomeScreen);
+  registerScreen('/baccarat/play', baccaratPlayScreen);
+  registerScreen('/baccarat/learn', baccaratLearnScreen);
+  registerScreen('/baccarat/learn/:lessonId', baccaratLessonScreen);
+  registerScreen('/baccarat/train', baccaratTrainHubScreen);
+  registerScreen('/baccarat/train/hand', baccaratHandTrainerScreen);
+  registerScreen('/baccarat/train/third', baccaratThirdCardTrainerScreen);
+  registerScreen('/baccarat/train/full', baccaratFullHandTrainerScreen);
+  registerScreen('/baccarat/train/road', baccaratRoadTrainerScreen);
+  registerScreen('/baccarat/probability', baccaratProbabilityScreen);
+  registerScreen('/baccarat/tracking', baccaratTrackingScreen);
+  registerScreen('/baccarat/simulate', baccaratSimulatorScreen);
+  registerScreen('/baccarat/stats', baccaratStatsScreen);
+  registerScreen('/baccarat/progress', baccaratProgressScreen);
+  registerScreen('/baccarat/settings', baccaratSettingsScreen);
 }
 
 function applyPreferences(): void {

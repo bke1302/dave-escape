@@ -1079,3 +1079,169 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
 }
+
+/* ========================================================================
+   BACCARAT — כרטיסי משחק, שולחן ולוחות תוצאות
+   ======================================================================== */
+
+.main-hero { text-align: center; align-items: center; }
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(11, 15, 22, 0.4));
+}
+.game-card.accent-jack {
+  border-color: rgba(52, 211, 153, 0.28);
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(21, 122, 81, 0.28), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(11, 15, 22, 0.5));
+}
+.game-card.accent-bacc {
+  border-color: rgba(227, 179, 65, 0.3);
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(160, 32, 52, 0.3), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(11, 15, 22, 0.5));
+}
+.game-card-head { display: flex; align-items: center; gap: 12px; }
+.game-card-icon {
+  width: 52px; height: 52px; flex: none;
+  display: grid; place-items: center;
+  font-size: 1.6rem;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-soft);
+}
+.game-card-title {
+  font-size: 1.25rem; font-weight: 900; letter-spacing: 1px;
+  background: linear-gradient(120deg, var(--gold-soft), var(--gold));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.game-card-tagline { font-size: 0.78rem; color: var(--text-dim); line-height: 1.4; }
+.game-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.game-stat { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.game-stat-value { font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.game-stat-label { font-size: 0.62rem; color: var(--text-faint); }
+
+/* ---- שולחן באקרה ---- */
+
+.bacc-felt {
+  position: relative;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(120, 22, 40, 0.42), transparent 62%),
+    linear-gradient(180deg, #2a0d16, #12060b);
+  border-bottom: 1px solid rgba(227, 179, 65, 0.22);
+}
+.bacc-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bacc-side {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 6px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-soft);
+  transition: box-shadow var(--speed) var(--ease), border-color var(--speed);
+}
+.bacc-side.winner { border-color: rgba(227, 179, 65, 0.6); box-shadow: 0 0 0 1px rgba(227,179,65,0.4), 0 0 26px rgba(227, 179, 65, 0.22); }
+.bacc-side-title { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.5px; }
+.bacc-side.player .bacc-side-title { color: #7fb4ff; }
+.bacc-side.banker .bacc-side-title { color: #ff8a8a; }
+.bacc-cards { display: flex; gap: 4px; min-height: 78px; align-items: center; }
+.bacc-cards .playing-card { width: 46px; height: 66px; }
+.bacc-cards .card-pip { font-size: 1.25rem; }
+.bacc-total {
+  font-size: 1.5rem; font-weight: 900; font-variant-numeric: tabular-nums;
+  min-width: 46px; text-align: center;
+  padding: 2px 10px; border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-soft);
+}
+.bacc-result {
+  text-align: center; font-weight: 800; font-size: 0.92rem;
+  min-height: 24px; color: var(--gold-soft);
+}
+.bacc-bet-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bacc-bet {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 12px 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 800;
+  transition: transform var(--speed-fast) var(--ease), border-color var(--speed-fast), background var(--speed-fast);
+}
+.bacc-bet:active { transform: scale(0.95); }
+.bacc-bet.selected { background: rgba(227, 179, 65, 0.18); border-color: rgba(227, 179, 65, 0.55); }
+.bacc-bet .bet-payout { font-size: 0.64rem; font-weight: 600; color: var(--text-faint); }
+.bacc-bet.player-bet.selected { background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.55); }
+.bacc-bet.banker-bet.selected { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.55); }
+
+/* ---- לוחות תוצאות ---- */
+
+.road-board {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-soft);
+  overflow-x: auto;
+  direction: ltr;
+}
+.road-row { display: flex; gap: 2px; }
+.road-cell {
+  position: relative;
+  width: 20px; height: 20px; flex: none;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid; place-items: center;
+  font-size: 0.6rem; font-weight: 800; color: #fff;
+}
+.bead-plate .road-cell.filled { border-radius: 50%; }
+.road-player { background: #2f6fd0; }
+.road-banker { background: #c0392b; }
+.road-tie { background: #1f9d55; }
+.big-player .road-ring { background: #2f6fd0; }
+.big-banker .road-ring { background: #c0392b; }
+.big-road .road-cell.filled { background: transparent; }
+.road-ring { width: 15px; height: 15px; border-radius: 50%; display: block; }
+.big-road .road-cell.filled .road-ring { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
+.road-tie-mark {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 0.55rem; font-weight: 800; color: #eaffea;
+}
+.road-tie-mark::before {
+  content: '';
+  position: absolute;
+  width: 22px; height: 2px;
+  background: #35d07f;
+  transform: rotate(-45deg);
+  border-radius: 2px;
+}
+.road-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.7rem; color: var(--text-dim); }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.legend-dot.tie-dot { background: #1f9d55; }
+.legend-dot.big-player { background: #2f6fd0; }
+.legend-dot.big-banker { background: #c0392b; }
+.legend-text { margin-inline-end: 8px; }
+
+.history-strip { display: flex; gap: 4px; flex-wrap: wrap; direction: ltr; justify-content: flex-start; }
+.history-chip {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.65rem; font-weight: 800; color: #fff;
+}
+
+.rule-table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.rule-table th, .rule-table td { padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--border-soft); }
+.rule-table th { color: var(--text-dim); font-size: 0.7rem; }
+.rule-draw { color: #7ee2b0; font-weight: 800; }
+.rule-stand { color: #ff9b9b; font-weight: 800; }

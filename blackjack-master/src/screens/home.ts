@@ -1,4 +1,4 @@
-/** מסך הבית — נקודת הכניסה לכל מערכות האפליקציה. */
+/** מסך הבית של עולם הבלאק ג'ק — נקודת הכניסה לכל מערכות המשחק. */
 import { describeRulesHe } from '../engine/rules.ts';
 import { accuracy, overallAccuracy, state, todayKey } from '../state/appState.ts';
 import { currentLevel, levelProgress } from '../content/progression.ts';
@@ -41,7 +41,7 @@ function menuItem(spec: MenuSpec): HTMLElement {
   );
 }
 
-export function homeScreen(): ScreenInstance {
+export function blackjackHomeScreen(): ScreenInstance {
   const s = state();
   const level = currentLevel(s);
   const progress = levelProgress(level, s);
@@ -49,12 +49,12 @@ export function homeScreen(): ScreenInstance {
   const dailyDone = daily.date === todayKey() ? Object.values(daily.segments).filter((x) => x.done).length : 0;
 
   const element = screen(
-    { variant: 'default' },
+    { variant: 'default', title: 'BLACKJACK', subtitle: 'לומדים. מתרגלים. משתפרים.', showBack: true },
     h(
       'section',
       { class: 'hero' },
       h('h1', { class: 'hero-title', text: 'BLACKJACK MASTER' }),
-      h('p', { class: 'hero-tagline', text: 'לומדים. מתרגלים. משתפרים.' }),
+      h('p', { class: 'hero-tagline', text: 'אסטרטגיה בסיסית · ספירת קלפים · סימולציית קזינו' }),
       h(
         'div',
         { class: 'hero-stats' },

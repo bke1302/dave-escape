@@ -17,8 +17,8 @@ export function splashScreen(): ScreenInstance {
         cardView({ rank: 'A', suit: 'spades', id: 's1' }, { animate: false }),
         cardView({ rank: 'K', suit: 'hearts', id: 's2' }, { animate: false }),
       ),
-      h('h1', { class: 'splash-title', text: 'BLACKJACK MASTER' }),
-      h('p', { class: 'splash-sub', text: 'לומדים. מתרגלים. משתפרים.' }),
+      h('h1', { class: 'splash-title', text: 'CASINO ACADEMY' }),
+      h('p', { class: 'splash-sub', text: 'בלאק ג׳ק · באקרה' }),
       h('div', { class: 'splash-loader' }, h('span', {})),
     ),
   );
